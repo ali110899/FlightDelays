@@ -7,25 +7,32 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
 import it.polito.tdp.extflightdelays.model.Airline;
 import it.polito.tdp.extflightdelays.model.Airport;
+import it.polito.tdp.extflightdelays.model.EdgeClass;
 import it.polito.tdp.extflightdelays.model.Flight;
 
 public class ExtFlightDelaysDAO {
 
-	public List<Airline> loadAllAirlines() {
+	//modifica inserendo mappa
+	public List<Airline> loadAllAirlines(Map<Integer, Airport> mappa) {
+		
 		String sql = "SELECT * from airlines";
 		List<Airline> result = new ArrayList<Airline>();
-
+		
 		try {
 			Connection conn = ConnectDB.getConnection();
 			PreparedStatement st = conn.prepareStatement(sql);
 			ResultSet rs = st.executeQuery();
 
 			while (rs.next()) {
-				result.add(new Airline(rs.getInt("ID"), rs.getString("IATA_CODE"), rs.getString("AIRLINE")));
-			}
+				
+				Airline airline = new Airline(rs.getInt("ID"), rs.getString("IATA_CODE"), rs.getString("AIRLINE"));
+				result.add(airline);
+				//mappa.put(rs.getInt("ID"), airport);
+				}
 
 			conn.close();
 			return result;
@@ -37,9 +44,10 @@ public class ExtFlightDelaysDAO {
 		}
 	}
 
-	public List<Airport> loadAllAirports() {
+	public List<Airport> loadAllAirports(Map<Integer, Airport> mappa) {
+		
 		String sql = "SELECT * FROM airports";
-		List<Airport> result = new ArrayList<Airport>();
+		 List<Airport> listaAereoporti =  new ArrayList<Airport>();
 
 		try {
 			Connection conn = ConnectDB.getConnection();
@@ -50,11 +58,12 @@ public class ExtFlightDelaysDAO {
 				Airport airport = new Airport(rs.getInt("ID"), rs.getString("IATA_CODE"), rs.getString("AIRPORT"),
 						rs.getString("CITY"), rs.getString("STATE"), rs.getString("COUNTRY"), rs.getDouble("LATITUDE"),
 						rs.getDouble("LONGITUDE"), rs.getDouble("TIMEZONE_OFFSET"));
-				result.add(airport);
+				mappa.put(rs.getInt("ID"), airport);
+				listaAereoporti.add(airport);
 			}
 
 			conn.close();
-			return result;
+			return listaAereoporti;
 
 		} catch (SQLException e) {
 			e.printStackTrace();
@@ -64,6 +73,7 @@ public class ExtFlightDelaysDAO {
 	}
 
 	public List<Flight> loadAllFlights() {
+		
 		String sql = "SELECT * FROM flights";
 		List<Flight> result = new LinkedList<Flight>();
 
@@ -91,4 +101,68 @@ public class ExtFlightDelaysDAO {
 			throw new RuntimeException("Error Connection Database");
 		}
 	}
+	
+	public List<Airport> getVertici(int nAirlines, Map<Integer, Airport> mappa) {
+		
+		//mi prendo come vertici gli aereoporti che hanno linee maggiori di"?"
+		String sql = "SELECT tmp.ID, tmp.IATA_CODE, COUNT(*) AS N "
+				+ "FROM (SELECT a.ID,  a.IATA_CODE, f.`AIRLINE_ID`, COUNT(*) AS n "
+				+ "FROM flights f, airports a "
+				+ "WHERE f.`ORIGIN_AIRPORT_ID`= a.ID OR f.`DESTINATION_AIRPORT_ID` = a.ID "
+				+ "GROUP BY a.ID,  a.IATA_CODE, f.`AIRLINE_ID`)tmp "
+				+ "GROUP BY tmp.ID, tmp.IATA_CODE "
+				+ "HAVING N>=?";
+		List<Airport> listaAereoporti = new ArrayList<Airport>();
+		
+		try {
+			Connection conn = ConnectDB.getConnection();
+			PreparedStatement st = conn.prepareStatement(sql);
+			st.setInt(1, nAirlines);
+			ResultSet rs = st.executeQuery();
+
+			while (rs.next()) {
+				listaAereoporti.add(mappa.get(rs.getInt("ID")));
+			}
+
+			conn.close();
+			return listaAereoporti;
+
+		} catch (SQLException e) {
+			e.printStackTrace();
+			System.out.println("Errore connessione al database");
+			throw new RuntimeException("Error Connection Database");
+		}
+	}
+	
+public List<EdgeClass> getRotte(Map<Integer, Airport> mappa) {
+		
+		//vado a prendermi le coppie partenza-arrivo delle linee e faccio count sui voli
+		String sql = "SELECT f.`ORIGIN_AIRPORT_ID`, f.`DESTINATION_AIRPORT_ID`, COUNT(*) AS n "
+				+ "FROM flights f "
+				+ "GROUP BY f.`ORIGIN_AIRPORT_ID`, f.`DESTINATION_AIRPORT_ID`";
+		List<EdgeClass> rotte = new ArrayList<EdgeClass>();
+		
+		try {
+			Connection conn = ConnectDB.getConnection();
+			PreparedStatement st = conn.prepareStatement(sql);
+			ResultSet rs = st.executeQuery();
+
+			while (rs.next()) {
+				EdgeClass rotta = new EdgeClass(mappa.get(rs.getInt("ORIGIN_AIRPORT_ID")), 
+							mappa.get(rs.getInt("DESTINATION_AIRPORT_ID")),
+							rs.getInt("n"));
+				rotte.add(rotta);
+				
+			}
+
+			conn.close();
+			return rotte;
+
+		} catch (SQLException e) {
+			e.printStackTrace();
+			System.out.println("Errore connessione al database");
+			throw new RuntimeException("Error Connection Database");
+		}
+	}
+	
 }
